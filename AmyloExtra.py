@@ -130,7 +130,7 @@ def best_approximation_line_direction(points: list) -> np.ndarray:
     return direction
 
 
-def find_longest_beta_strand(chain, ss_map: Dict, chain_id: str,
+def find_all_beta_strands(chain, ss_map: Dict, chain_id: str,
                              min_beta_length: int = 3):
     '''Alpha-carbon atoms of the longest beta-strand.'''
 
@@ -170,13 +170,21 @@ def find_longest_beta_strand(chain, ss_map: Dict, chain_id: str,
     if not runs:
         return []
 
-    longest = max(runs, key=len)
+    #longest = max(runs, key=len)
 
-    return [coord for _, coord in longest]
+    coords = []
+
+    for run in runs:
+        coords += [coord for _, coord in run]
+
+    #return [coord for _, coord in longest]
+
+    return coords
 
 
-def best_ca_coords(chain, ss_map: Dict, chain_id: str, min_residues: int, min_beta_length: int = 3) -> np.ndarray:
-    coords = find_longest_beta_strand(chain, ss_map, chain_id, min_beta_length)
+def best_ca_coords(chain, ss_map: Dict, chain_id: str, min_residues: int,
+                   min_beta_length: int = 3) -> np.ndarray:
+    coords = find_all_beta_strands(chain, ss_map, chain_id, min_beta_length)
     if len(coords) >= min_residues:
         return np.array(coords, dtype=float)
 
@@ -205,7 +213,8 @@ def best_ca_coords(chain, ss_map: Dict, chain_id: str, min_residues: int, min_be
 
 def extract_chain_planes(filepath: str, min_residues: int = 3,
                          min_beta_length: int = 3,
-                         min_chain_size: int = 10) -> Dict:
+                         min_chain_size: int = 10,
+                         verbose: bool = True) -> Dict:
     '''For each chain, calculate its centroid and normal.'''
 
     ext = os.path.splitext(filepath)[1].lower()
@@ -234,9 +243,16 @@ def extract_chain_planes(filepath: str, min_residues: int = 3,
         ca_coords = best_ca_coords(chain, ss_map, chain.id,
                                    min_residues, min_beta_length)
 
+        if verbose:
+            print(chain.id)
+            print(ca_coords)
+
+        # If the number of amino acid residues is not less than the minimal
+        # polypeptide length.
         if len(ca_coords) >= min_residues:
             try:
                 centroid, normal = fit_plane(ca_coords)
+                # Store the plane through its point and normal.
                 chain_planes[chain.id] = (centroid, normal)
             except:
                 continue
@@ -322,10 +338,14 @@ def count_protofilaments(
     max_lateral_dist: float = 30.0,
     min_beta_length: int = 3,
     min_chain_size: int = 10,
+    verbose: bool = True
 ) -> int:
     # Calculate centers and normals of each amyloid-like chain.
     chain_planes = extract_chain_planes(filepath, min_residues, min_beta_length,
                                         min_chain_size)
+
+    if verbose:
+        print(chain_planes)
 
     # Store IDs of all found amyloid-like chains.
     chain_ids = list(chain_planes.keys())
@@ -334,12 +354,16 @@ def count_protofilaments(
     if not chain_ids:
         raise ValueError('This path does not exist.')
 
-    # Initiate the union of sets, each monomer is in its own set.
+    # Initiate the union of sets, where each monomer is initially in its own
+    # set.
     uf = UnionFind(chain_ids)
 
     # Check all neighbor amyloid-like chains, whether they belong to one
     # protofilament.
     for id1, id2 in find_neighbors(chain_planes, neighbor_dist):
+        if verbose:
+            print(id1, id2, 'are neighbours.')
+
         # Centers and their normal vectors.
         c1, n1 = chain_planes[id1]
         c2, n2 = chain_planes[id2]
